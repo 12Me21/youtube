@@ -1,0 +1,4 @@
+# ?*.* will match "name.ext" but not ".name"
+songs/?*.*
+playlists/?*.*
+thumbnails/?*.*
