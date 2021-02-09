@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+from __future__ import unicode_literals
 from os import listdir,path,chdir,chmod
 from sys import argv,stdout
 import re
@@ -6,23 +8,32 @@ import urllib
 home=path.dirname(path.abspath(__file__))
 chdir(home)
 
-lastDownload = None
+ydl = None
 
-class Video:
-	file=None
-	thumbnail=None
-	id=None
+class Video(object):
+	_lastDownload = None
+	_files = {}
+	file = None
+	thumbnail = None
+	id = None
 	def __init__(self, id):
 		self.id = id
+		self._files[id] = self
+	def __new__(self, id):
+		if id in self._files:
+			return self._files[id]
+		return super(Video, self).__new__(self, id)
 	def __str__(self):
 		return "{"+self.id+": "+(self.file or "NONE")+","+(self.thumbnail or "NONE")+"}"
 	def __repr__(self):
 		return self.__str__()
 	def downloadVideo(self):
+		initYTDL()
+		from youtube_dl.utils import DownloadError
 		filename = None
 		try:
 			ydl.download(["https://youtu.be/"+self.id])
-			filename = lastDownload['filepath']
+			filename = self._lastDownload['filepath']
 			chmod(filename, 0o444)
 		except DownloadError:
 			filename = "songs/"+self.id+".fail"
@@ -38,33 +49,22 @@ class Video:
 			self.downloadVideo()
 		if not self.thumbnail:
 			self.downloadThumbnail()
-files={}
-def getInfo(id):
-	if id not in files: files[id]=Video(id)
-	return files[id]
+	@staticmethod
+	def getExisting():
+		songname_re = re.compile(r"^([\w_-]{11})\.\w+$")
+		for filename in listdir("songs"):
+			match = songname_re.match(filename)
+			if match:
+				Video(match.group(1)).file = filename
+		for filename in listdir("thumbnails"):
+			match = songname_re.match(filename)
+			if match:
+				Video(match.group(1)).thumbnail = filename
 
-songname_re = re.compile(r"^(?:songs/)?([\w_-]{11})\.\w+$")
-thumbnail_re = re.compile(r"^(?:thumbnails/)?([\w_-]{11})\.\w+$")
-def gotFile(filename):
-	match = songname_re.match(filename)
-	if not match: return
-	id = match.group(1)
-	getInfo(id).file = filename
-def gotThumbnail(filename):
-	match = thumbnail_re.match(filename)
-	if not match: return
-	id = match.group(1)
-	getInfo(id).thumbnail = filename
-
-for filename in listdir("songs"):
-	gotFile(filename)
+Video.getExisting()
 
 ydl = None
 
-for filename in listdir("thumbnails"):
-	gotThumbnail(filename)
-#print thumbnails
-	
 def makePlaylist(name):
 	"Generate playlist file"
 	with open("playlists/"+name+".txt",'r') as list,\
@@ -74,7 +74,7 @@ def makePlaylist(name):
 		for line in list:
 			id=line.rstrip()
 			if id[0]=="#": continue
-			info = getInfo(id)
+			info = Video(id)
 			if info.file:
 				playlist.write("<track><location>../songs/"+info.file+"</location>\n")
 				playlist.write("<image>file://"+home+"/thumbnails/"+id+".jpg</image></track>\n")
@@ -92,40 +92,42 @@ def readPlaylist(name):
 
 def getPlaylist(id):
 	"Get a list of videos in a playlist"
+	initYTDL()
 	playlist = ydl.extract_info("https://youtube.com/playlist?list="+id, download=False, process=False)
 	list = []
 	for x in playlist['entries']:
 		list+=[x['id']]
 	return list
 
+def initYTDL():
+	global ydl
+	if ydl: return
+	print("waiting for ytdl to start...")
+	from youtube_dl import YoutubeDL
+	from youtube_dl.postprocessor.common import PostProcessor
+	ydl = YoutubeDL({
+		'format': 'bestaudio/best',
+		'outtmpl': 'songs/%(id)s.%(ext)s',
+		'continue_dl': True,
+		'addmetadata': True,
+		'postprocessors': [{
+			'key': 'FFmpegMetadata',
+		},{
+			'key': 'FFmpegExtractAudio',
+		}]
+	})
+	class TestPP(PostProcessor):
+		def run(self, inf):
+			Video._lastDownload = inf #hack
+			return [], inf
+	ydl.add_post_processor(TestPP())
+
 name = argv[1]
 playlistId = None
 with open("playlists/"+name+".txt",'r') as list:
 	for line in list:
 		playlistId = line.rstrip()
-		break
-
-print("waiting for ytdl to start because it's fucking slow")
-from youtube_dl import YoutubeDL
-from youtube_dl.postprocessor.common import PostProcessor
-from youtube_dl.utils import DownloadError
-ydl = YoutubeDL({
-	'format': 'bestaudio/best',
-	'outtmpl': 'songs/%(id)s.%(ext)s',
-	'continue_dl': True,
-	'addmetadata': True,
-	'postprocessors': [{
-		'key': 'FFmpegMetadata',
-	},{
-		'key': 'FFmpegExtractAudio',
-	}]
-})
-class TestPP(PostProcessor):
-	def run(self, inf):
-		global lastDownload
-		lastDownload = inf
-		return [], inf
-ydl.add_post_processor(TestPP())
+		break # just read the first line
 
 if len(argv) >= 3:
 	print("getting playlist...")
@@ -137,10 +139,12 @@ if len(argv) >= 3:
 
 ids = readPlaylist(name);
 
-print("downloading new videos...")
+print("playlist: "+name+"["+playlistId+"] with "+str(len(ids))+" videos")
+
+print("checking for new videos...")
 for id in ids:
-	info = getInfo(id)
-	print info
+	info = Video(id)
+	#print info
 	info.get()
 
 print("generating playlist file...")
