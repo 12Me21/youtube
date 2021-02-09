@@ -129,7 +129,7 @@ with open("playlists/"+name+".txt",'r') as list:
 		playlistId = line.rstrip()
 		break # just read the first line
 
-if len(argv) >= 3:
+if len(argv) < 3:
 	print("getting playlist...")
 	ids = getPlaylist(playlistId);
 	with open("playlists/"+name+".txt",'w') as list:
