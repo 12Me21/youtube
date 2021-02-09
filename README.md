@@ -1,3 +1,8 @@
+this is a tool for creating archives of your youtube music (not to be confused with Youtube Music™) playlists, using youtube-dl.
+it will get a list of videos in a playlist, and download any that aren't already saved.
+files are downloaded in the highest quality audio format, and it writes metadata + downloads thumbnails
+creates a .xspf playlist file
+
 Dependencies:
 
 make sure youtube_dl is in the python include path, somehow
@@ -5,6 +10,7 @@ make sure youtube_dl is in the python include path, somehow
 
 Downloading a playlist:
 
+- make sure the playlist is public or unlisted
 - create a file named `playlists/<name>.txt`
 - put the playlist id (JUST the id, not a url) on the first line of this file
 - run `./main.py <name>`
