@@ -5,6 +5,7 @@ creates a .xspf playlist file
 
 Dependencies:
 
+(uses python 2 because youtube dl is faster there for some reason)
 make sure youtube_dl is in the python include path, somehow  
 ...I just created a symlink named `youtube_dl` in this directory to `.../youtube-dl/youtube_dl/`
 
