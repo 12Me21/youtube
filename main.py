@@ -15,6 +15,7 @@ class Video(object):
 	_files = {}
 	file = None
 	thumbnail = None
+	info = None
 	id = None
 	def __init__(self, id):
 		self.id = id
@@ -37,7 +38,8 @@ class Video(object):
 			chmod(filename, 0o444)
 		except DownloadError:
 			filename = "songs/"+self.id+".fail"
-			open(filename, "w").close()
+			with open(filename, "w") as f:
+				f.write(repr(self.info))
 		self.file = filename
 	def downloadThumbnail(self):
 		filename = "thumbnails/"+id+".jpg"
@@ -55,7 +57,7 @@ class Video(object):
 		for filename in listdir("songs"):
 			match = songname_re.match(filename)
 			if match:
-				Video(match.group(1)).file = filename
+				Video(match.group(1)).file = "songs/"+filename
 		for filename in listdir("thumbnails"):
 			match = songname_re.match(filename)
 			if match:
@@ -76,19 +78,27 @@ def makePlaylist(name):
 			if id[0]=="#": continue
 			info = Video(id)
 			if info.file:
-				playlist.write("<track><location>../songs/"+info.file+"</location>\n")
+				playlist.write("<track><location>../"+info.file+"</location>\n")
 				playlist.write("<image>file://"+home+"/thumbnails/"+id+".jpg</image></track>\n")
 		playlist.write('</trackList></playlist>\n')
 
+def writePlaylist(name, items):
+	with open("playlists/"+name+".txt",'w') as list:
+		list.write(playlistId+"\n")
+		for item in items:
+			list.write(item['id']+"\n")
+
 def readPlaylist(name):
-	ids = []
+	items = []
 	with open("playlists/"+name+".txt",'r') as list:
+		first = True
 		for line in list:
 			id=line.rstrip()
 			if id[0]=="#": continue
-			if len(id)>=34: continue
-			ids += [id]
-	return ids
+			if not first:
+				items += [{'id':id}]
+			first = False
+	return items
 
 def getPlaylist(id):
 	"Get a list of videos in a playlist"
@@ -96,7 +106,7 @@ def getPlaylist(id):
 	playlist = ydl.extract_info("https://youtube.com/playlist?list="+id, download=False, process=False)
 	list = []
 	for x in playlist['entries']:
-		list+=[x['id']]
+		list+=[x]
 	return list
 
 def initYTDL():
@@ -127,24 +137,46 @@ playlistId = None
 with open("playlists/"+name+".txt",'r') as list:
 	for line in list:
 		playlistId = line.rstrip()
-		break # just read the first line
+		break # just read the first line lol
 
 if len(argv) < 3:
 	print("getting playlist...")
-	ids = getPlaylist(playlistId);
-	with open("playlists/"+name+".txt",'w') as list:
-		list.write(playlistId+"\n")
-		for id in ids:
-			list.write(id+"\n")
+	items = getPlaylist(playlistId);
+	writePlaylist(name, items)
 
-ids = readPlaylist(name);
+items = readPlaylist(name);
 
-print("playlist: "+name+"["+playlistId+"] with "+str(len(ids))+" videos")
+print "playlist: "+name
+print "id: "+playlistId
 
-print("checking for new videos...")
-for id in ids:
+failed = 0
+skipped = 0
+got = 0
+missing = 0
+for item in items:
+	id = item['id']
 	info = Video(id)
-	#print info
+	info.info = item
+	file = info.file
+	if file:
+		if file.endswith(".fail"):
+			failed+=1
+			print "failed: "+file
+		elif file.endswith(".skip"): skipped+=1
+		else: got+=1
+	else:
+		missing+=1
+print "  Total: "+str(len(items))
+print "   Have: "+str(got)
+if missing: print "Missing: "+str(missing)
+if failed: print " Failed: "+str(failed)
+if skipped: print "Skipped: "+str(skipped)
+print
+
+print("downloading new videos... ("+str(missing)+")")
+for item in items:
+	id = item['id']
+	info = Video(id)
 	info.get()
 
 print("generating playlist file...")
